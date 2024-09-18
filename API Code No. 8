@@ -1,0 +1,63 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+int main(int argc, char *argv[]) {
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+    int rc1 = fork();
+    if (rc1 < 0) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    } else if (rc1 == 0) {
+        // First child process
+        close(pipefd[0]); // Close unused read end
+
+        // Redirect standard output to the write end of the pipe
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]); // Close the original write end
+
+        // Write a message to the pipe
+        printf("Message from first child (pid:%d)\n", (int)getpid());
+
+        // Exit the first child process
+        exit(EXIT_SUCCESS);
+    }
+
+    int rc2 = fork();
+    if (rc2 < 0) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    } else if (rc2 == 0) {
+        // Second child process
+        close(pipefd[1]); // Close unused write end
+
+        // Redirect standard input to the read end of the pipe
+        dup2(pipefd[0], STDIN_FILENO);
+        close(pipefd[0]); // Close the original read end
+
+        // Read a message from the pipe and print it to the standard output
+        char buffer[128];
+        while (fgets(buffer, sizeof(buffer), stdin) != NULL) {
+            printf("Second child received: %s", buffer);
+        }
+
+        // Exit the second child process
+        exit(EXIT_SUCCESS);
+    }
+
+    // Parent process
+    close(pipefd[0]); // Close unused read end in the parent
+    close(pipefd[1]); // Close unused write end in the parent
+
+    // Wait for both children to finish
+    waitpid(rc1, NULL, 0);
+    waitpid(rc2, NULL, 0);
+
+    return 0;
+}
